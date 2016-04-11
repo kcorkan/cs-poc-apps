@@ -1,0 +1,16 @@
+{
+   "name": "Random App Name54555",
+   "className": "CustomApp",
+   "server": "https://rally1.rallydev.com",
+   "sdk": "2.0",
+   "javascript": [
+      "Toolbox.js",
+      "CustomChooserDialog.js",
+      "ExampleRecordMenuItem.js",
+      "ExampleRecordMenuOverride.js",
+      "App.js"
+   ],
+   "css": [
+      "app.css"
+   ]
+}
