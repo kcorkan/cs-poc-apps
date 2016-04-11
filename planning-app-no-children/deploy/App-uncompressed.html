@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PlanningApp</title>
+
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function () {
+                Ext.define('Toolbox',{
+    singleton: true,
+
+    loadProjects: function(fetchList){
+        var deferred = Ext.create('Deft.Deferred');
+        Ext.create('Rally.data.wsapi.Store',{
+            model: 'Project',
+            fetch: fetchList,
+            limit: 'Infinity'
+        }).load({
+            callback: function(records, operation){
+                deferred.resolve(records);
+            }
+        });
+        return deferred;
+    },
+    getModelObject: function(name) {
+        var deffered=Ext.create('Deft.Deferred');
+        Rally.data.ModelFactory.getModel({
+            type: name,
+            success: function(model) {
+                deffered.resolve(model);
+            }
+        });
+        return deffered.promise;
+    },
+    buildProjectPinBuildingBlockData: function(records, fieldName){
+        var hashByObjectID = Toolbox.buildHashByField(records, 'ObjectID'),
+            pins = _.map(_.filter(records, function(r){return (/^TECHNOLOGY AREA/).test(r.get('Name')); }),
+                function(r){
+                    return r.get('ObjectID');
+                });
+
+        var projectsWithBuildingBlocks = Ext.Array.filter(records, function(record){
+            return record.get(fieldName) && record.get(fieldName).length > 0;
+        });
+
+        var data = Ext.Array.map(projectsWithBuildingBlocks, function(p){
+            var path = Toolbox.getProjectPath(p, hashByObjectID),
+                pathNames = Toolbox.getStringPath(path, hashByObjectID),
+                pin = _.intersect(pins, path);
+
+            return {
+                Name: p.get('Name'),
+                BuildingBlock: p.get(fieldName),
+                ObjectID: p.get('ObjectID'),
+                Ancestors: path,
+                AncestorNames: pathNames,
+                Pin: hashByObjectID[pin]
+            };
+        });
+        return data;
+    },
+    buildHashByField: function(records, field){
+        var hash = {};
+        Ext.Array.each(records, function(record){
+            hash[record.get(field)] = record;
+        });
+        return hash;
+    },
+
+    buildCustomProjectData: function(records,customField){
+        var hashByObjectID = Toolbox.buildHashByField(records, 'ObjectID');
+
+        var projectsWithBuildingBlocks = Ext.Array.filter(records, function(record){
+            return record.get(customField) && record.get(customField).length > 0;
+        });
+
+        var data = Ext.Array.map(projectsWithBuildingBlocks, function(p){
+            var path = Toolbox.getProjectPath(p, hashByObjectID),
+                stringPath = Toolbox.getStringPath(path, hashByObjectID);
+            return {
+                Name: p.get('Name'),
+                BuildingBlock: p.get(customField),
+                ObjectID: p.get('ObjectID'),
+                Path: stringPath,
+                Ancestors: path
+            };
+        });
+        return data;
+    },
+    getStringPath: function(path, hashByObjectID){
+        var stringPath = _.map(path, function(p){ return hashByObjectID[p].get('Name') || "--"; });
+        return stringPath;
+    },
+    getProjectPath: function(projectRecord, projectHashByObjectID){
+        var parent = projectRecord.get('Parent') && projectRecord.get('Parent').ObjectID,
+            path = [projectRecord.get('ObjectID')];
+
+        while (parent){
+            var parentRecord = projectHashByObjectID[parent];
+            if (parentRecord){
+                path.unshift(projectHashByObjectID[parent].get('ObjectID'));
+                parent = parentRecord.get('Parent') && parentRecord.get('Parent').ObjectID;
+            } else {
+                parent = null;
+            }
+        }
+        return path;
+    }
+});
+                Ext.define('CustomApp', {
+    extend: 'Rally.app.App',
+    componentCls: 'app',
+
+    parentTypePath: 'portfolioitem/roadmap',
+    parentFetch: ['FormattedID','Name','ObjectID','Project'],
+    subfeatureTypePath: 'portfolioitem/buildingblockitem',
+    subFeatureModel: null,
+    projectFetchList: ['ObjectID','Name','Parent'],
+    buildingBlockField: 'c_BuildingBlock',
+
+    demandField: 'c_TotalDemandVisitor',
+
+    launch: function() {
+
+        var projectFetchList = this.projectFetchList.concat([this.buildingBlockField]);
+
+        Deft.Promise.all([
+            Toolbox.loadProjects(projectFetchList),
+            Toolbox.getModelObject(this.subfeatureTypePath)
+        ]).then({
+            scope:this,
+            success: function(results) {
+                this.buildingBlockData = Toolbox.buildProjectPinBuildingBlockData(results[0]);
+                this.subFeatureModel=results[1];
+                this._displayGrid();
+            },
+            failure: function(message) {
+                Rally.ui.notify.Notifier.showError({message: 'Error retrieving projects: ' + message});
+            }
+        });
+    },
+    _displayGrid: function(){
+        if (this.down('rallygrid')){
+            this.down('rallygrid').destroy();
+        }
+
+        var store = Ext.create('Rally.data.wsapi.Store',{
+            model: this.parentTypePath,
+            fetch: this.parentFetch
+        }).load({
+            callback: function(records, operation){
+                if (operation.wasSuccessful()){
+                    this._buildGrid(store);
+                } else {
+                    Rally.ui.notify.Notifier.showError({message: operation.error.erros.join(',')});
+                }
+            }
+        });
+    },
+    _buildGrid: function(store){
+        this.add({
+            xtype: 'rallygrid',
+            store: store,
+            columnCfgs: this._getColumnCfgs(),
+            showRowActionsColumn: true,
+            plugins: [{
+                ptype: 'rowexpander',
+                rowBodyTpl: new Ext.XTemplate('<p>{Name}</p>{[this.getBuildingBlocks(values)]}',{
+                    getBuildingBlocks: function(values){
+                        return Ext.String.format('<br/><span class="building-blocks">Building Blocks go here...</span>');
+                    }
+                })
+            }]
+        });
+    },
+    _getColumnCfgs: function(){
+        return [{
+            dataIndex: 'FormattedID'
+        },{
+            dataIndex: 'Name'
+        },{
+            dataIndex: 'Project'
+        }];
+    }
+});
+
+
+            Rally.launchApp('CustomApp', {
+                name:"PlanningApp",
+	            parentRepos:""
+            });
+
+        });
+    </script>
+
+
+    <style type="text/css">
+        .app {
+  /* Add app styles here */
+}
+
+    </style>
+</head>
+<body>
+</body>
+</html>
