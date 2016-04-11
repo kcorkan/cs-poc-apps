@@ -1,16 +1,17 @@
 {
-    "name": "PlanningApp",
-    "className": "CustomApp",
-    "server": "https://rally1.rallydev.com",
-    "sdk": "2.0",
-    "javascript": [
-        "Toolbox.js",
-        "App.js",
-        "CustomChooserDialog.js",
-        "ExampleRecordMenuItem.js",
-        "ExampleRecordMenuOverride.js"
-    ],
-    "css": [
-        "app.css"
-    ]
+   "name": "PlanningApp",
+   "className": "CustomApp",
+   "server": "https://rally1.rallydev.com",
+   "sdk": "2.0",
+   "javascript": [
+      "Toolbox.js",
+      "SummaryTemplate.js",
+      "App.js",
+      "CustomChooserDialog.js",
+      "ExampleRecordMenuItem.js",
+      "ExampleRecordMenuOverride.js"
+   ],
+   "css": [
+      "app.css"
+   ]
 }

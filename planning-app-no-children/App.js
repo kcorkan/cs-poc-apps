@@ -3,11 +3,24 @@ Ext.define('CustomApp', {
     componentCls: 'app',
 
     parentTypePath: 'portfolioitem/roadmap',
+    planningQuarterField: 'c_PlanningQuarter',
     parentFetch: ['FormattedID','Name','ObjectID','Project'],
     projectFetchList: ['ObjectID','Name','Parent'],
     buildingBlockField: 'c_BuildingBlock',
 
     demandField: 'c_TotalDemandVisitor',
+
+    items: [{
+        xtype:'container',
+        itemId: 'filterBox',
+        layout: 'hbox'
+    },{
+        xtype: 'container',
+        itemId: 'summaryBox'
+    },{
+        xtype:'container',
+        itemId: 'gridBox'
+    }],
 
     launch: function() {
 
@@ -28,56 +41,113 @@ Ext.define('CustomApp', {
     },
     _addComponents: function() {
         //add summary and filter containor
-        this._addSummaryComponent();
+
         this._addFilterComponent();
+        this._addSummaryComponent();
     },
     _addSummaryComponent: function() {
         console.log("inside summary component");
-       /*this.add({
-                xtype: 'rallygrid',
-                itemId: 'summaryGrid',
-                storeConfig: {
-                    model: this.parentTypePath,
-                    fetch: this.parentFetch,
-                    autoLoad: true
-                },
-                context: this.getContext(),
-                enableEditing: false
-        });*/
+
+        var summary_tpl = Ext.create('SummaryTemplate');
+
+        this.down('#summaryBox').tpl = summary_tpl;
+
+        //this.add({
+        //    xtype: 'container',
+        //    itemId: 'summaryBox',
+        //    flex: 1,
+        //    style: {
+        //        textAlign: 'right',
+        //        cursor: 'pointer'
+        //    },
+        //    tpl: summary_tpl
+        //});
+        this._updateSummaryContainer();
     },
-    _addFilterComponent: function() {
-        this.add({
-                        xtype: 'rallyfieldvaluecombobox',
-                        itemId: 'stateComboBox',
-                        fieldLabel: 'Unsized RMI:',
-                        model: this.parentTypePath,
-                        field: 'State',
-                        listeners: {
-                            select: this._onSelect,
-                            ready: this._onLoad,
-                            scope: this
-                        }
+    _updateSummaryContainer: function(){
+        var summary = this.down('#summaryBox');
+        summary.update({
+            Pin: this._getPlatformPin(),
+            Quarter: this.down('#quarterComboBox') && this.down('#quarterComboBox').getValue() || "None Selected",
+            TeamSprintCapacity: this._getTeamSprintCapacity()
         });
 
     },
-    _onLoad: function () {
-        this._displayGrid();
+    _getTeamSprintCapacity: function(){
+        return '200';
     },
-    _getStateFilter: function() {
-        return {
-                    property: 'State',
-                    operator: '=',
-                    value: this.down('#stateComboBox').getValue()
+    _getPlatformPin: function(){
+        return this.getContext().getProject().Name;
+    },
+    _addFilterComponent: function() {
+
+       this.down('#filterBox').add({
+                xtype: 'rallyfieldvaluecombobox',
+                itemId: 'quarterComboBox',
+                fieldLabel: 'Planning Quarter:',
+                labelAlign: 'right',
+                model: this.parentTypePath,
+                field: this.planningQuarterField
+            });
+        this.down('#filterBox').add({
+                xtype: 'rallyfieldvaluecombobox',
+                itemId: 'stateComboBox',
+                fieldLabel: 'State:',
+                labelAlign: 'right',
+                multiSelect: true,
+                model: this.parentTypePath,
+                field: 'State'
+            });
+
+
+        this.down('#stateComboBox').on('select', this._onSelect, this);
+        this.down('#quarterComboBox').on('select', this._onSelect, this);
+
+        this._displayGrid();
+
+    },
+    _getFilters: function(){
+        var state = this.down('#stateComboBox').getValue(),
+            quarter = this.down('#quarterComboBox').getValue(),
+            stateFilters = null,
+            quarterFilter = null;
+
+        if (state){
+            stateFilters = _.map(state, function(s){ return {
+                property: 'State',
+                value: s || ""
                 };
-    },      
-    _onSelect: function() {
+            });
+            stateFilters = Rally.data.wsapi.Filter.or(stateFilters);
+        }
+
+        if (quarter){
+            quarterFilter = Ext.create('Rally.data.wsapi.Filter', {
+                property: this.planningQuarterField,
+                value: quarter || ""
+            });
+        }
+
+        if (stateFilters && quarterFilter){
+            return stateFilters.and(quarterFilter);
+        }
+        return stateFilters || quarterFilter || [];
+    },
+    _onSelect: function(cb) {
         var grid = this.down('rallygrid'),
-        store = grid.getStore();
-            
+        store = grid.getStore(),
+            filters = this._getFilters();
         store.clearFilter(true);
-        store.filter(this._getStateFilter());
+        if (filters){
+            store.addFilter(filters, true);
+        }
+        store.load();
+        this._updateSummaryContainer();
     },
     _displayGrid: function(){
+
+        this.down('#gridBox').removeAll();
+
         if (this.down('dataGrid')){
             this.down('dataGrid').destroy();
         }
@@ -105,14 +175,11 @@ Ext.define('CustomApp', {
                 name: 'BB3',
                 amount: 1
             }]);
-        })
+        });
     },
     _buildGrid: function(){
-        var grid = this.add({
+        var grid = this.down('#gridBox').add({
             xtype: 'rallygrid',
-
-
-
             itemId: 'dataGrid',
 
             storeConfig: {
@@ -122,7 +189,7 @@ Ext.define('CustomApp', {
                 listeners: {
                     load: this._updateModels,
                     scope: this
-                },
+                }
             },
             margin: 25,
             columnCfgs: this._getColumnCfgs(),
@@ -140,9 +207,6 @@ Ext.define('CustomApp', {
         grid.getView().on('expandbody', this._expandRowBody, this);
     },
 
-    _expandRowBody2: function(rowNode, record, expandRow, options){
-
-    },
     _expandRowBody: function(rowNode, record, expandRow, options){
         var ct = Ext.get(expandRow.querySelector('#planning-' + record.get('FormattedID'))),
             data = record.get('buildingBlocks');
@@ -166,7 +230,7 @@ Ext.define('CustomApp', {
                 getGroupString: function(record) {
                     var team = record.get('team');
                     if (team === "home"){
-                        return 'Home Team'
+                        return 'Home Team';
                     }
                     return "Visiting Teams";
                 }
