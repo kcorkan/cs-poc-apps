@@ -1,7 +1,4 @@
 var data = [];
-
-
-
 Ext.define('CustomApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
@@ -9,9 +6,9 @@ Ext.define('CustomApp', {
     parentTypePath: 'portfolioitem/roadmap',
     planningQuarterField: 'c_PlanningQuarter',
     parentFetch: ['FormattedID','Name','ObjectID','Project','c_RequestedPins'],
-    projectFetchList: ['ObjectID','Name','Parent','c_Capacity'],
+    projectFetchList: ['ObjectID','Name','Parent'],
     buildingBlockField: 'c_BuildingBlock',
-    demandField: 'c_TotalDemandVisitor',
+    teamCapacityField: 'c_Capacity',
 
     items: [{
         xtype:'container',
@@ -30,7 +27,7 @@ Ext.define('CustomApp', {
 
     launch: function() {
 
-        var projectFetchList = this.projectFetchList.concat([this.buildingBlockField]);
+        var projectFetchList = this.projectFetchList.concat([this.buildingBlockField, this.teamCapacityField]);
 
         Deft.Promise.all([
             Toolbox.loadProjects(projectFetchList)
@@ -49,57 +46,68 @@ Ext.define('CustomApp', {
     },
 
     _addComponents: function() {
-        //add summary and filter containor
+
+        this.down('#filterBox').removeAll();
+
+        //validate that we are running within the scope of a PIN.
+        if (!this._getPlatformPin()){
+            console.log('this', this._getPlatformPin());
+            this.down('#filterBox').add({
+                xtype: 'container',
+                html: "Please choose a Project Scope that is associated with a valid PIN."
+            });
+            return;
+        }
 
         this._addFilterComponent();
         this._addSummaryComponent();
     },
     _addSummaryComponent: function() {
-        console.log("inside summary component");
-
-        var summary_tpl = Ext.create('SummaryTemplate');
-
-        this.down('#summaryBox').tpl = summary_tpl;
+        this.down('#summaryBox').tpl = Ext.create('SummaryTemplate');
         this._updateSummaryContainer();
     },
-    _updateSummaryContainer: function(){
-        var summary = this.down('#summaryBox');
-        var projectID = this.getContext().getProject().ObjectID,
-            teamSprintCapacityDisplay =_.map(this._getQuarters(), function(q){
-            return this.projectInfoStore.getTeamSprintCapacity(projectID);
-        }, this).join('<br/>'),
+    _updateSummaryContainer: function(validationMessage){
+
+        var summary = this.down('#summaryBox'),
+            projectID = this.getContext().getProject().ObjectID,
             quarters = this._getQuarters(),
             pin = this._getPlatformPin(),
-            records = this.down('#dataGrid') && this.down('#dataGrid').getStore().getRange() || [],
-            demand = this._getDemand(records, quarters, pin && pin.get('ObjectID') || 0);
+            records = this.down('#dataGrid') && this.down('#dataGrid').getStore().getRange() || [];
 
-        summary.update({
-            Pin: this._getPlatformPinName(),
-            Quarter: quarters.join('<br/>'),
-            TeamSprintCapacity: teamSprintCapacityDisplay,
-            HomeDemand: demand.homeDemand,
-            VisitorDemand: demand.visitorDemand
-        });
-    },
-    _getDemand: function(records, quarters, homePin){
-        var homeDemands = [],
-            visitorDemands = [];
-
+        var summaryInfo = [];
         Ext.Array.each(quarters, function(q){
-            var totalDemand = 0,
-                homeDemand = 0;
-            Ext.Array.each(records, function(r){
-                totalDemand += r.getDemand(q);
-                homeDemand += r.getDemand(q,homePin);
-            });
-            homeDemands.push(homeDemand);
-            visitorDemands.push(totalDemand-homeDemand);
-        });
+            var homeDemand = this._getDemand(records, q, pin.get("ObjectID")),
+                totalDemand = this._getDemand(records, q);
 
-        return {
-            homeDemand: homeDemands.join('<br>'),
-            visitorDemand: visitorDemands.join('<br>')
-        };
+            summaryInfo.push({
+                Pin: this._getPlatformPinName(),
+                Quarter: q,
+                TeamSprintCapacity: this.projectInfoStore.getTeamSprintCapacity(projectID),
+                homeDemand: homeDemand,
+                totalDemand: totalDemand
+            });
+        }, this);
+
+
+        if (quarters.length === 0){
+            summaryInfo.push({
+                Pin: this._getPlatformPinName(),
+                Quarter: '<div style="color:red;">Please select at least 1 quarter to plan</div>',
+                TeamSprintCapacity: '--',
+                homeDemand: '--',
+                totalDemand: '--'
+            });
+        }
+
+        summary.update(summaryInfo);
+    },
+    _getDemand: function(records, quarter, homePin){
+        var demand = 0;
+        Ext.Array.each(records, function(r){
+            console.log('record',r, demand, quarter);
+           demand += r.getDemand(quarter,homePin); //If homepin is empty, then it will calculate the total demand
+        });
+        return demand;
     },
     _getPlatformPin: function(){
         return this.projectInfoStore.getPinRecordForProject(this.getContext().getProject().ObjectID);
@@ -145,13 +153,13 @@ Ext.define('CustomApp', {
             labelAlign: 'right',
             labelWidth: 150,
             listeners: {
-                change: this._onSelect,
+                select: this._displayGrid,
                 scope: this
             }
         });
 
        // this.down('#stateComboBox').on('select', this._onSelect, this);
-        this.down('#quarterComboBox').on('select', this._onSelect, this);
+        this.down('#quarterComboBox').on('select', this._displayGrid, this);
 
         this._displayGrid();
     },
@@ -209,22 +217,26 @@ Ext.define('CustomApp', {
         return filters || quarterFilters || [];
     },
     _getQuarters: function(){
-        return this.down('#quarterComboBox').getValue();
+        return Ext.Array.filter(this.down('#quarterComboBox').getValue() || [], function(q){
+            return q && q.length > 0;
+        });
     },
-    _onSelect: function(cb) {
-        var grid = this.down('rallygrid');
-        if (grid){
-            grid.destroy();
+    _validateSelections: function(){
+        console.log('_validateSelections', this._getQuarters());
+        if (this._getQuarters().length > 0){
+            return true;
         }
 
-       this._displayGrid();
+        this._updateSummaryContainer("Please select at least 1 quarter to plan.");
+        return false;
     },
+
     _displayGrid: function(){
 
         this.down('#gridBox').removeAll();
 
-        if (this.down('dataGrid')){
-            this.down('dataGrid').destroy();
+        if (!this._validateSelections()){
+            return;
         }
 
         ExtendedModelBuilder.build(this.parentTypePath, 'PortfolioItemWithBuildingBlocks').then({
@@ -315,10 +327,7 @@ Ext.define('CustomApp', {
         var grid = this.down('#gridBox').add({
             xtype: 'rallygrid',
             itemId: 'dataGrid',
-            //features: [{
-            //    ftype: 'summary',
-            //    dock: 'top'
-            //}],
+            stateful: false,
             storeConfig: {
                 model: model,
                 fetch: this.parentFetch,
@@ -420,6 +429,7 @@ Ext.define('CustomApp', {
     _transformDataFromTempStore: function(store, quarters){
         var data = [],
             bbs =  _.map(store.getRange(), function(bb){ return bb.getData(); });
+
         Ext.Array.each(bbs, function(bb){
             Ext.Array.each(quarters, function(q){
                 console.log('bb',bb,q);
@@ -468,30 +478,29 @@ Ext.define('CustomApp', {
             dataIndex: 'FormattedID'
         },{
             dataIndex: 'Name'
-        },{
-            dataIndex: 'Project'
         }];
 
-        if (!quarters || quarters.length === 0){
-            quarters = [""];
-        }
+        quarters = quarters || [];
         Ext.Array.each(quarters, function(q){
             if (q && q.length > 0){
                 columns.push({
-                    dataIndex: '__buildingBlocks',
+                    dataIndex: '__demand',
                     text: q + ' Demand',
                     renderer: function(v,m,r) {
                         return r.getDemand(q);
-                    },
-                    summaryType: 'sum'
+                    }
                 });
             }
         });
-        return columns;
 
-    },
-    _sumDemand: function(x,y,z){
-        console.log('_sumDemand',x,y,z);
+        columns = columns.concat([{
+           dataIndex: 'Project'
+        },{
+           dataIndex: 'PlannedStartDate'
+        },{
+           dataIndex: 'PlannedEndDate'
+        }]);
+        return columns;
     },
     _showBuildingBlockPicker: function(isHome, record){
 

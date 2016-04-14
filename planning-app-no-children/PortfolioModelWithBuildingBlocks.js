@@ -24,6 +24,9 @@ Ext.define('ExtendedModelBuilder',{
                     convert: function(value, record){
                         return record.get('FormattedID');
                     }
+                },{
+                    name: '__demand',
+                    defaultValue: '--'
                 }];
                 var new_model = Ext.define(newModelName, {
                     extend: model,
