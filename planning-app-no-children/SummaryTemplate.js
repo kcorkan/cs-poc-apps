@@ -2,16 +2,20 @@ Ext.define('SummaryTemplate',{
     extend: 'Ext.XTemplate',
     constructor: function(config) {
         var templateConfig = [
-            '<tpl><table>',
+            '<tpl><table class="summary">',
             '<thead>',
-                '<th>Platform/PIN</th>',
-                '<th>Quarter</th>',
-                '<th>Team Sprint Capacity</th>',
+                '<th class="summary">Platform/PIN</th>',
+                '<th class="summary">Quarter</th>',
+                '<th class="summary">Home Demand</th>',
+                '<th class="summary">Team Sprint Capacity</th>',
+                '<th class="summary">Visitor Demand</th>',
             '</thead>',
             '<tr>',
-                '<td>{Pin}</td>',
-                '<td>{Quarter}</td>',
-                '<td>{TeamSprintCapacity}</td>',
+                '<td class="summary">{Pin}</td>',
+                '<td class="summary">{Quarter}</td>',
+                '<td class="summary">{HomeDemand}</td>',
+                '<td class="summary">{TeamSprintCapacity}</td>',
+                '<td class="summary">{VisitorDemand}</td>',
             '</tr>',
             '</table></tpl>'
         ];

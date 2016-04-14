@@ -15,9 +15,6 @@
 //});
 //dlg.show();
 
-
-
-
 Ext.define('Rally.ui.dialog.CustomChooserDialog', {
     extend: 'Rally.ui.dialog.Dialog',
     alias: 'widget.customchooserdialog',
@@ -57,16 +54,12 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
          */
         columns: [
             {
-                text: 'Name',
-                dataIndex: 'Name',
-                flex: 1
-            },{
                 text: 'Building Block',
-                dataIndex: 'BuildingBlock'
-            },{
-                text: 'Path',
-                dataIndex: 'Path',
-                flex: 3
+                dataIndex: 'buildingBlock',
+                flex: 1,
+                renderer: function(v,m,r){
+                    return r.get('pinName') + ' - ' + r.get('buildingBlock');
+                }
             }
         ],
 
@@ -240,22 +233,12 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
     },
 
     _getProjectDataStore: function(){
-        var currentTeam=this.currentTeam;
-        var showHomeTeam=(this.showHomeTeam==='Home');
-        console.log('_getProjectDataStore', this.showHomeTeam, showHomeTeam);
-        console.log("HomeTeam",showHomeTeam,"currentTeam",currentTeam);
-        //commenting to test
+        console.log('this',this.teamData, this.teamFields);
         var data = this.teamData;
-        //var data = Ext.Array.filter(this.teamData, function(team){
-        //    if (Ext.Array.contains(team.Ancestors, currentTeam)){
-        //        return showHomeTeam;
-        //    }
-        //    return showHomeTeam !== true;
-        //});
         return Ext.create('Rally.data.custom.Store',{
             data: data,
             fields: this.teamFields,
-            //pageSize: data.length,
+            pageSize: data.length,
             remoteFilter: false //we need this for the filtering
         });
     },

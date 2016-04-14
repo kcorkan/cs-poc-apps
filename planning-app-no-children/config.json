@@ -6,10 +6,10 @@
    "javascript": [
       "Toolbox.js",
       "SummaryTemplate.js",
+      "ProjectInformationStore.js",
+      "PortfolioModelWithBuildingBlocks.js",
       "App.js",
-      "CustomChooserDialog.js",
-      "ExampleRecordMenuItem.js",
-      "ExampleRecordMenuOverride.js"
+      "CustomChooserDialog.js"
    ],
    "css": [
       "app.css"

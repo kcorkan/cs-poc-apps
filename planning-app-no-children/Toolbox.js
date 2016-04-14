@@ -58,7 +58,6 @@ Ext.define('Toolbox',{
         });
         return hash;
     },
-
     buildCustomProjectData: function(records,customField){
         var hashByObjectID = Toolbox.buildHashByField(records, 'ObjectID');
 
