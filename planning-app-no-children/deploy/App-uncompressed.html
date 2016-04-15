@@ -467,38 +467,6 @@ Ext.define('ExtendedModelBuilder',{
         return deferred;
     }
 });
-                Ext.define('BuildingBlockComponent', {
-    extend: 'Ext.container.Container',
-    alias: 'widget.buildingblockcomponent',
-
-    layout: {
-        type: 'vbox',
-        align: 'stretch'
-    },
-
-    defaults: {
-        flex: 1
-    },
-
-    /**
-     * @constructor
-     * @param {Object} config
-     */
-    constructor: function (config) {
-        this.record = config.record;
-        this.mergeConfig(config);
-        this.callParent([config]);
-    },
-
-    initComponent: function () {
-        var bb = this.record.getFlattenedBuildingBlockObjects(this.quarters);
-
-        this.html = "hello world";
-
-        this.callParent(arguments);
-    },
-
-});
                 var data = [];
 Ext.define('CustomApp', {
     extend: 'Rally.app.App',
@@ -805,50 +773,43 @@ Ext.define('CustomApp', {
         var ct = Ext.get(expandRow.querySelector('#planning-' + record.get('FormattedID'))),
             quarters = this._getQuarters();
 
-        Ext.create('BuildingBlockComponent',{
-            record: record,
-            quarters: quarters,
+        var grid = this.down('#planning-row-' + record.get('FormattedID'));
+        if (this.grid){
+            this.grid.destroy();
+        }
+
+        var columnCfgs = [{
+            dataIndex: 'pin',
+            text: 'Building Block',
+            flex: 1,
+            renderer: function(v,m,r){
+                return r.get('pinName') + ' - ' + r.get('buildingBlock');
+            }
+        }];
+
+        Ext.Array.each(quarters, function(q){
+            if (q && q.length > 0){
+                columnCfgs.push({
+                    dataIndex: q,
+                    text: q,
+                    flex: 1,
+                    editor: {
+                        xtype: 'rallynumberfield'
+                    }
+                });
+            }
+        });
+
+
+        this.grid = Ext.create('Rally.ui.grid.Grid',{
+            itemId: 'planning-row-' + record.get('FormattedID'),
+            store: this._transformDataToTempStoreData(record, quarters),
+            pageSize: data.length,
+            showPagingToolbar: false,
+            columnCfgs: columnCfgs,
             renderTo: ct
         });
         ct.setHeight(200);
-
-        //var grid = this.down('#planning-row-' + record.get('FormattedID'));
-        //if (this.grid){
-        //    this.grid.destroy();
-        //}
-        //
-        //var columnCfgs = [{
-        //    dataIndex: 'pin',
-        //    text: 'Building Block',
-        //    flex: 1,
-        //    renderer: function(v,m,r){
-        //        return r.get('pinName') + ' - ' + r.get('buildingBlock');
-        //    }
-        //}];
-        //
-        //Ext.Array.each(quarters, function(q){
-        //    if (q && q.length > 0){
-        //        columnCfgs.push({
-        //            dataIndex: q,
-        //            text: q,
-        //            flex: 1,
-        //            editor: {
-        //                xtype: 'rallynumberfield'
-        //            }
-        //        });
-        //    }
-        //});
-        //
-        //
-        //this.grid = Ext.create('Rally.ui.grid.Grid',{
-        //    itemId: 'planning-row-' + record.get('FormattedID'),
-        //    store: this._transformDataToTempStoreData(record, quarters),
-        //    pageSize: data.length,
-        //    showPagingToolbar: false,
-        //    columnCfgs: columnCfgs,
-        //    renderTo: ct
-        //});
-        //ct.setHeight(200);
     },
     _transformDataToTempStoreData: function(record, quarters){
         var hash = {};
@@ -935,7 +896,8 @@ Ext.define('CustomApp', {
         },{
             dataIndex: 'FormattedID'
         },{
-            dataIndex: 'Name'
+            dataIndex: 'Name',
+            flex: 2
         }];
 
         quarters = quarters || [];
@@ -944,6 +906,7 @@ Ext.define('CustomApp', {
                 columns.push({
                     dataIndex: '__demand',
                     text: q + ' Demand',
+                    flex: 1,
                     renderer: function(v,m,r) {
                         return r.getDemand(q);
                     }
@@ -952,11 +915,14 @@ Ext.define('CustomApp', {
         });
 
         columns = columns.concat([{
-           dataIndex: 'Project'
+           dataIndex: 'Project',
+            flex: 1
         },{
-           dataIndex: 'PlannedStartDate'
+           dataIndex: 'PlannedStartDate',
+            flex: 1
         },{
-           dataIndex: 'PlannedEndDate'
+           dataIndex: 'PlannedEndDate',
+            flex: 1
         }]);
         return columns;
     },

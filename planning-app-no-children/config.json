@@ -8,7 +8,6 @@
       "SummaryTemplate.js",
       "ProjectInformationStore.js",
       "PortfolioModelWithBuildingBlocks.js",
-      "BuildingBlockComponent.js",
       "App.js",
       "CustomChooserDialog.js"
    ],
