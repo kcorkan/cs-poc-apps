@@ -262,9 +262,12 @@ Ext.define('CustomApp', {
     },
     _getProjectContext: function(){
         var showVisitors = this.down('#showVisitingRequests').getValue();
-
+        console.log('_getProjectContext');
         if (showVisitors){
-            return {project: null};
+            console.log('showVisitors = true');
+            return {
+                project: null
+            };
         }
         return {
             project: this.getContext().getProject()._ref,
@@ -295,110 +298,53 @@ Ext.define('CustomApp', {
             showRowActionsColumn: false,
             plugins: [{
                 ptype: 'rowexpander',
-                rowBodyTpl: '<div id="planning-{FormattedID}"> </div>'
+                rowBodyTpl: '<div id="planning-{FormattedID}"></div>'
             }]
         });
+        grid.on('afterlayout', this._restoreRowHeight, this);
         grid.getView().on('expandbody', this._expandRowBody, this);
+        grid.getView().on('collapsebody', this._collapseRowBody, this);
+    },
+    /**
+     * addresses the issue where the row height gets reset and hides any currently expanded rows
+     * @private
+     */
+    _restoreRowHeight: function(grid){
+         Ext.Array.each(grid.getView().getNodes(), function(n){
+             var collapsed = /x-grid-row-collapsed/.test(n.className);
+             if (!collapsed){
+                 //we need to do something here to reset the rowheight
+                 console.log('node expanded');
+             }
+        });
+    },
+    _collapseRowBody: function(rowNode, record, expandRow, options){
+        var ctCmp = Ext.getCmp(this._getBuildingBlockCmpId(record));
+
+        if (ctCmp){
+            ctCmp.destroy();
+        }
+    },
+    _getBuildingBlockCmpId: function(record){
+        return 'buildingBlock-' + record.get('FormattedID');
     },
     _expandRowBody: function(rowNode, record, expandRow, options){
-        var ct = Ext.get(expandRow.querySelector('#planning-' + record.get('FormattedID'))),
-            quarters = this._getQuarters();
+        var quarters = this._getQuarters(),
+            ctId = '#planning-' + record.get('FormattedID'),
+            ct = Ext.get(expandRow.querySelector(ctId));
 
-        var grid = this.down('#planning-row-' + record.get('FormattedID'));
-        if (this.grid){
-            this.grid.destroy();
-        }
-
-        var columnCfgs = [{
-            dataIndex: 'pin',
-            text: 'Building Block',
-            flex: 1,
-            renderer: function(v,m,r){
-                return r.get('pinName') + ' - ' + r.get('buildingBlock');
-            }
-        }];
-
-        Ext.Array.each(quarters, function(q){
-            if (q && q.length > 0){
-                columnCfgs.push({
-                    dataIndex: q,
-                    text: q,
-                    flex: 1,
-                    editor: {
-                        xtype: 'rallynumberfield'
-                    }
-                });
-            }
-        });
-
-
-        this.grid = Ext.create('Rally.ui.grid.Grid',{
-            itemId: 'planning-row-' + record.get('FormattedID'),
-            store: this._transformDataToTempStoreData(record, quarters),
-            pageSize: data.length,
-            showPagingToolbar: false,
-            columnCfgs: columnCfgs,
+        var bbct = Ext.create('BuildingBlockComponent',{
+            id: this._getBuildingBlockCmpId(record),
+            record: record,
+            quarters: quarters,
             renderTo: ct
         });
-        ct.setHeight(200);
-    },
-    _transformDataToTempStoreData: function(record, quarters){
-        var hash = {};
-        var fields = ['pin','pinName','buildingBlock'].concat(quarters),
-            jsonData = Ext.JSON.decode(record.get('c_RequestedPins') || "[]");
-
-        Ext.Array.each(jsonData || [], function(bb){
-            console.log('inside bb', bb);
-            var bbDisplayName = bb.pinName + ' - ' + bb.buildingBlock;
-            if (bb.quarter && bb.quarter.length > 0){
-                if (!hash[bbDisplayName]){
-                    hash[bbDisplayName] = {
-                        pin: bb.pin,
-                        pinName: bb.pinName,
-                        buildingBlock: bb.buildingBlock
-                    };
-                }
-                hash[bbDisplayName][bb.quarter] = (bb.demand || 0) + (hash[bbDisplayName][bb.quarter] || 0);
-            }
-        });
-
-        var data = _.values(hash);
-
-        return Ext.create('Rally.data.custom.Store',{
-            data: data,
-            fields: fields,
-            listeners: {
-                scope: this,
-                update: function(store){
-                    record.updateBuildingBlocks(this._transformDataFromTempStore(store, quarters));
-                    this._updateSummaryContainer();
-                }
-            }
-        });
-    },
-    _transformDataFromTempStore: function(store, quarters){
-        var data = [],
-            bbs =  _.map(store.getRange(), function(bb){ return bb.getData(); });
-
-        Ext.Array.each(bbs, function(bb){
-            Ext.Array.each(quarters, function(q){
-                console.log('bb',bb,q);
-                if (bb[q] >= 0){
-                    data.push({
-                        pin: bb.pin,
-                        pinName: bb.pinName,
-                        buildingBlock: bb.buildingBlock,
-                        quarter: q,
-                        demand: bb[q]
-                    });
-                }
-            });
-        });
-        return data;
+        ct.setHeight(bbct.getHeight());
     },
     _getColumnCfgs: function(){
         var me = this,
-            quarters = this._getQuarters();
+            quarters = this._getQuarters(),
+            homePin = this._getPlatformPinObjectID();
 
         var columns = [{
             xtype: 'rallyrowactioncolumn',
@@ -436,10 +382,13 @@ Ext.define('CustomApp', {
             if (q && q.length > 0){
                 columns.push({
                     dataIndex: '__demand',
-                    text: q + ' Demand',
+                    text: q + ' Demand (Home / Visiting)',
                     flex: 1,
                     renderer: function(v,m,r) {
-                        return r.getDemand(q);
+                        var home = r.getDemand(q,homePin),
+                            total = r.getDemand(q);
+
+                        return Ext.String.format('{0}/{1}', home, total-home);
                     }
                 });
             }

@@ -382,6 +382,29 @@ Ext.define('ExtendedModelBuilder',{
                         console.log('getFlattenedBuildingBlockObjects',hash, _.values(hash));
                         return _.values(hash);
                     },
+                    updateDemand: function(demand, quarter, pin, buildingBlock){
+                        var bbs = this._getBuildingBlockObjects(),
+                            updatedBuildingBlocks = [];
+                        console.log('updateDemand', demand, quarter, pin, buildingBlock, bbs);
+                        Ext.Array.each(bbs, function(b){
+                            if (b.quarter === quarter && b.pin === pin && b.buildingBlock === buildingBlock){
+                                b.demand = demand;
+                            }
+                            updatedBuildingBlocks.push(b);
+                        });
+                        console.log('updateDemand updated',updatedBuildingBlocks);
+
+                        this._setBuildingBlockObjects(updatedBuildingBlocks);
+                    },
+                    removeDemand: function(pin, buildingBlock, quarters){
+                         var bbs = this._getBuildingBlockObjects(),
+                            updatedBuildingBlocks = Ext.Array.filter(bbs, function(b){
+                                var match = b.pin === pin && b.buildingBlock === buildingBlock &&
+                                        Ext.Array.contains(quarters, b.quarter);
+                                return !match;
+                            });
+                        this._setBuildingBlockObjects(updatedBuildingBlocks);
+                    },
                     /**
                      * private functions to encode and decode the JSON that is stored in the text field or external data source
                      *
@@ -403,13 +426,7 @@ Ext.define('ExtendedModelBuilder',{
                     _getBuildingBlockObjects: function(){
                         var objects =  Ext.JSON.decode(this.get(this.buildingBlockField) || "[]");
 
-                        //post-load data manipulation  here - need to transform the normalized JSON into
-                        //rows that can be displayed in a grid.
-                        //Also need to add same fields as parent
-                        Ext.Array.each(objects, function(o){
-                            o.children=null;
-                            o.text = o.pinName + ' - ' + o.buildingBlock;
-                        });
+                        //post-load data manipulation  here
 
                         return objects;
                     },
@@ -442,7 +459,6 @@ Ext.define('ExtendedModelBuilder',{
 
                         Ext.Array.each(buildingBlocks, function(bb){
                             if (bb.quarter === quarter){
-                                console.log('pin',pin,bb);
                                 if (pin){
                                     if (Number(bb.pin) === pin) {
                                         demand += bb.demand;
@@ -450,7 +466,6 @@ Ext.define('ExtendedModelBuilder',{
                                 } else {
                                     demand += bb.demand;
                                 }
-
                             }
                         });
                         return demand;
@@ -473,7 +488,10 @@ Ext.define('ExtendedModelBuilder',{
 
     layout: {
         type: 'vbox',
-        align: 'stretch'
+        align: 'stretch',
+        style: {
+            backgroundColor: Rally.util.Colors.grey1
+        }
     },
 
     defaults: {
@@ -485,18 +503,70 @@ Ext.define('ExtendedModelBuilder',{
      * @param {Object} config
      */
     constructor: function (config) {
-        this.record = config.record;
         this.mergeConfig(config);
         this.callParent([config]);
     },
 
     initComponent: function () {
-        var bb = this.record.getFlattenedBuildingBlockObjects(this.quarters);
+        var record = this.record,
+            quarters = this.quarters,
+            bb = this.record.getFlattenedBuildingBlockObjects(quarters);
 
-        this.html = "hello world";
+        var items = _.map(bb, function(b){
+
+            var subItems = [{
+                xtype: 'container',
+                flex: 1
+            },{
+                xtype: 'rallybutton',
+                cls: 'rly-small secondary',
+                iconCls: 'icon-delete',
+                handler: function(){
+                    record.removeDemand(b.pin, b.buildingBlock, quarters);
+                }
+            },{
+                xtype: 'container',
+                data: b,
+                tpl: '<tpl>{pinName} - {buildingBlock}</tpl>',
+                flex: 2,
+                height: 25,
+                cls: 'buildingBlockLabel',
+                margin: 5
+            }];
+            Ext.Array.each(quarters, function(q){
+
+                subItems.push({
+                    xtype: 'rallynumberfield',
+                    value: b[q],
+                    margin: 10,
+                    flex: 1,
+                    buildingBlock: b,
+                    quarter: q,
+                    listeners: {
+                        blur: function(nb){
+                            record.updateDemand(nb.getValue(), q, b.pin, b.buildingBlock);
+                        },
+                        scope: this
+                    }
+                });
+            });
+            subItems.push({
+                xtype: 'container',
+                flex: 3
+            });
+
+            return {
+                xtype: 'container',
+                layout: 'hbox',
+                items: subItems
+            };
+        }, this);
+
+        this.items = items;
+        this.setHeight(35 * bb.length);
 
         this.callParent(arguments);
-    },
+    }
 
 });
                 var data = [];
@@ -763,9 +833,12 @@ Ext.define('CustomApp', {
     },
     _getProjectContext: function(){
         var showVisitors = this.down('#showVisitingRequests').getValue();
-
+        console.log('_getProjectContext');
         if (showVisitors){
-            return {project: null};
+            console.log('showVisitors = true');
+            return {
+                project: null
+            };
         }
         return {
             project: this.getContext().getProject()._ref,
@@ -796,117 +869,53 @@ Ext.define('CustomApp', {
             showRowActionsColumn: false,
             plugins: [{
                 ptype: 'rowexpander',
-                rowBodyTpl: '<div id="planning-{FormattedID}"> </div>'
+                rowBodyTpl: '<div id="planning-{FormattedID}"></div>'
             }]
         });
+        grid.on('afterlayout', this._restoreRowHeight, this);
         grid.getView().on('expandbody', this._expandRowBody, this);
+        grid.getView().on('collapsebody', this._collapseRowBody, this);
+    },
+    /**
+     * addresses the issue where the row height gets reset and hides any currently expanded rows
+     * @private
+     */
+    _restoreRowHeight: function(grid){
+         Ext.Array.each(grid.getView().getNodes(), function(n){
+             var collapsed = /x-grid-row-collapsed/.test(n.className);
+             if (!collapsed){
+                 //we need to do something here to reset the rowheight
+                 console.log('node expanded');
+             }
+        });
+    },
+    _collapseRowBody: function(rowNode, record, expandRow, options){
+        var ctCmp = Ext.getCmp(this._getBuildingBlockCmpId(record));
+
+        if (ctCmp){
+            ctCmp.destroy();
+        }
+    },
+    _getBuildingBlockCmpId: function(record){
+        return 'buildingBlock-' + record.get('FormattedID');
     },
     _expandRowBody: function(rowNode, record, expandRow, options){
-        var ct = Ext.get(expandRow.querySelector('#planning-' + record.get('FormattedID'))),
-            quarters = this._getQuarters();
+        var quarters = this._getQuarters(),
+            ctId = '#planning-' + record.get('FormattedID'),
+            ct = Ext.get(expandRow.querySelector(ctId));
 
-        Ext.create('BuildingBlockComponent',{
+        var bbct = Ext.create('BuildingBlockComponent',{
+            id: this._getBuildingBlockCmpId(record),
             record: record,
             quarters: quarters,
             renderTo: ct
         });
-        ct.setHeight(200);
-
-        //var grid = this.down('#planning-row-' + record.get('FormattedID'));
-        //if (this.grid){
-        //    this.grid.destroy();
-        //}
-        //
-        //var columnCfgs = [{
-        //    dataIndex: 'pin',
-        //    text: 'Building Block',
-        //    flex: 1,
-        //    renderer: function(v,m,r){
-        //        return r.get('pinName') + ' - ' + r.get('buildingBlock');
-        //    }
-        //}];
-        //
-        //Ext.Array.each(quarters, function(q){
-        //    if (q && q.length > 0){
-        //        columnCfgs.push({
-        //            dataIndex: q,
-        //            text: q,
-        //            flex: 1,
-        //            editor: {
-        //                xtype: 'rallynumberfield'
-        //            }
-        //        });
-        //    }
-        //});
-        //
-        //
-        //this.grid = Ext.create('Rally.ui.grid.Grid',{
-        //    itemId: 'planning-row-' + record.get('FormattedID'),
-        //    store: this._transformDataToTempStoreData(record, quarters),
-        //    pageSize: data.length,
-        //    showPagingToolbar: false,
-        //    columnCfgs: columnCfgs,
-        //    renderTo: ct
-        //});
-        //ct.setHeight(200);
-    },
-    _transformDataToTempStoreData: function(record, quarters){
-        var hash = {};
-        var fields = ['pin','pinName','buildingBlock'].concat(quarters),
-            jsonData = Ext.JSON.decode(record.get('c_RequestedPins') || "[]");
-
-        Ext.Array.each(jsonData || [], function(bb){
-            console.log('inside bb', bb);
-            var bbDisplayName = bb.pinName + ' - ' + bb.buildingBlock;
-            if (bb.quarter && bb.quarter.length > 0){
-                if (!hash[bbDisplayName]){
-                    hash[bbDisplayName] = {
-                        pin: bb.pin,
-                        pinName: bb.pinName,
-                        buildingBlock: bb.buildingBlock
-                    };
-                }
-                hash[bbDisplayName][bb.quarter] = (bb.demand || 0) + (hash[bbDisplayName][bb.quarter] || 0);
-            }
-        });
-
-        var data = _.values(hash);
-
-        return Ext.create('Rally.data.custom.Store',{
-            data: data,
-            fields: fields,
-            listeners: {
-                scope: this,
-                update: function(store){
-                    record.updateBuildingBlocks(this._transformDataFromTempStore(store, quarters));
-                    this._updateSummaryContainer();
-                }
-            }
-        });
-    },
-    _transformDataFromTempStore: function(store, quarters){
-        var data = [],
-            bbs =  _.map(store.getRange(), function(bb){ return bb.getData(); });
-
-        Ext.Array.each(bbs, function(bb){
-            Ext.Array.each(quarters, function(q){
-                console.log('bb',bb,q);
-                if (bb[q] >= 0){
-                    data.push({
-                        pin: bb.pin,
-                        pinName: bb.pinName,
-                        buildingBlock: bb.buildingBlock,
-                        quarter: q,
-                        demand: bb[q]
-                    });
-                }
-            });
-        });
-        return data;
+        ct.setHeight(bbct.getHeight());
     },
     _getColumnCfgs: function(){
         var me = this,
-            quarters = this._getQuarters();
+            quarters = this._getQuarters(),
+            homePin = this._getPlatformPinObjectID();
 
         var columns = [{
             xtype: 'rallyrowactioncolumn',
@@ -935,7 +944,8 @@ Ext.define('CustomApp', {
         },{
             dataIndex: 'FormattedID'
         },{
-            dataIndex: 'Name'
+            dataIndex: 'Name',
+            flex: 2
         }];
 
         quarters = quarters || [];
@@ -943,20 +953,27 @@ Ext.define('CustomApp', {
             if (q && q.length > 0){
                 columns.push({
                     dataIndex: '__demand',
-                    text: q + ' Demand',
+                    text: q + ' Demand (Home / Visiting)',
+                    flex: 1,
                     renderer: function(v,m,r) {
-                        return r.getDemand(q);
+                        var home = r.getDemand(q,homePin),
+                            total = r.getDemand(q);
+
+                        return Ext.String.format('{0}/{1}', home, total-home);
                     }
                 });
             }
         });
 
         columns = columns.concat([{
-           dataIndex: 'Project'
+           dataIndex: 'Project',
+            flex: 1
         },{
-           dataIndex: 'PlannedStartDate'
+           dataIndex: 'PlannedStartDate',
+            flex: 1
         },{
-           dataIndex: 'PlannedEndDate'
+           dataIndex: 'PlannedEndDate',
+            flex: 1
         }]);
         return columns;
     },
@@ -1454,6 +1471,16 @@ td.summary {
 table.summary {
   cellpadding: 10px;
   text-align: center;
+}
+.x-grid-row-selected .x-grid-td {
+  background-color: white;
+}
+.x-grid-row-highlighted .x-grid-td {
+  background-color: white;
+}
+.buildingBlockLabel {
+  font-family: ProximaNova,Helvetica,Arial;
+  font-size: 9pt;
 }
 
     </style>

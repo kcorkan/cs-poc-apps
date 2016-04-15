@@ -68,6 +68,29 @@ Ext.define('ExtendedModelBuilder',{
                         console.log('getFlattenedBuildingBlockObjects',hash, _.values(hash));
                         return _.values(hash);
                     },
+                    updateDemand: function(demand, quarter, pin, buildingBlock){
+                        var bbs = this._getBuildingBlockObjects(),
+                            updatedBuildingBlocks = [];
+                        console.log('updateDemand', demand, quarter, pin, buildingBlock, bbs);
+                        Ext.Array.each(bbs, function(b){
+                            if (b.quarter === quarter && b.pin === pin && b.buildingBlock === buildingBlock){
+                                b.demand = demand;
+                            }
+                            updatedBuildingBlocks.push(b);
+                        });
+                        console.log('updateDemand updated',updatedBuildingBlocks);
+
+                        this._setBuildingBlockObjects(updatedBuildingBlocks);
+                    },
+                    removeDemand: function(pin, buildingBlock, quarters){
+                         var bbs = this._getBuildingBlockObjects(),
+                            updatedBuildingBlocks = Ext.Array.filter(bbs, function(b){
+                                var match = b.pin === pin && b.buildingBlock === buildingBlock &&
+                                        Ext.Array.contains(quarters, b.quarter);
+                                return !match;
+                            });
+                        this._setBuildingBlockObjects(updatedBuildingBlocks);
+                    },
                     /**
                      * private functions to encode and decode the JSON that is stored in the text field or external data source
                      *
@@ -89,13 +112,7 @@ Ext.define('ExtendedModelBuilder',{
                     _getBuildingBlockObjects: function(){
                         var objects =  Ext.JSON.decode(this.get(this.buildingBlockField) || "[]");
 
-                        //post-load data manipulation  here - need to transform the normalized JSON into
-                        //rows that can be displayed in a grid.
-                        //Also need to add same fields as parent
-                        Ext.Array.each(objects, function(o){
-                            o.children=null;
-                            o.text = o.pinName + ' - ' + o.buildingBlock;
-                        });
+                        //post-load data manipulation  here
 
                         return objects;
                     },
@@ -128,7 +145,6 @@ Ext.define('ExtendedModelBuilder',{
 
                         Ext.Array.each(buildingBlocks, function(bb){
                             if (bb.quarter === quarter){
-                                console.log('pin',pin,bb);
                                 if (pin){
                                     if (Number(bb.pin) === pin) {
                                         demand += bb.demand;
@@ -136,7 +152,6 @@ Ext.define('ExtendedModelBuilder',{
                                 } else {
                                     demand += bb.demand;
                                 }
-
                             }
                         });
                         return demand;

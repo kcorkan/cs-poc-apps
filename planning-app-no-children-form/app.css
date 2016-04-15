@@ -1,0 +1,33 @@
+.app {
+    /* Add app styles here */
+}
+
+th.summary {
+    text-transform: uppercase;
+    font-family: ProximaNovaSemiBold,Helvetica,Arial;
+    background-color: #e6e6e6;
+    font-size: 10pt;
+    width: 15%;
+}
+td.summary {
+    font-family: ProximaNova,Helvetica,Arial;
+    font-size: 10pt;
+    width: 15%;
+
+}
+table.summary {
+    cellpadding: 10px;
+    text-align: center;
+}
+.x-grid-row-selected .x-grid-td {
+    background-color: white;
+
+}
+.x-grid-row-highlighted .x-grid-td {
+    background-color: white;
+
+}
+.buildingBlockLabel {
+    font-family: ProximaNova,Helvetica,Arial;
+    font-size: 9pt;
+}
