@@ -266,7 +266,6 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
                 }
             })) : Ext.create('Ext.selection.RowModel', selectionConfig),
             showRowActionsColumn: false,
-            //storeConfig: this._getStoreConfig(),
             store: projectDataStore,
             viewConfig: {
                 emptyText: Rally.ui.EmptyTextFactory.get('defaultText'),
@@ -322,7 +321,8 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
 
     _findRecordInSelectionCache: function(record){
         return _.findIndex(this.selectionCache, function(cachedRecord) {
-            return cachedRecord.get('ObjectID') === record.get('ObjectID');
+            return cachedRecord.get('pin') === record.get('pin') &&
+                cachedRecord.get('buildingBlock') === record.get('buildingBlock');
         });
     },
 
@@ -335,7 +335,6 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
             }
             this.selectionCache.push(record);
         }
-
         this._enableDoneButton();
     },
 

@@ -107,6 +107,36 @@
         return path;
     }
 });
+                Ext.define('DemandCalculator',{
+    constructor: function(config){
+        this.records = config.records;
+        this.homePin = config.homePin;
+    },
+    getHomeDemand: function(quarter){
+        return this._getDemand(this.records, quarter, this.homePin);
+    },
+    getTotalDemand: function(quarter){
+        return this._getDemand(this.records, quarter);
+    },
+    getVisitorDemand: function(quarter){
+        return this.getTotalDemand(quarter) - this.getHomeDemand(quarter);
+    },
+    getHomeDemandFromVisitingTeams: function(quarter){
+        //TODO: this is if we eventually want to visualize how much of the home capacity is being requested from Visiting teams
+        return 0;
+    },
+    getHomeDemandFromHomeTeam: function(quarter){
+        //TODO: this is if we eventually want to visualize how much of the home capacity is being requested from home teams
+        return 0;
+    },
+    _getDemand: function(records, quarter, homePin){
+        var demand = 0;
+        Ext.Array.each(records, function(r){
+            demand += r.getDemand(quarter,homePin); //If home pin is empty, then it will calculate the total demand
+        });
+        return demand;
+    }
+});
                 Ext.define('SummaryTemplate',{
     extend: 'Ext.XTemplate',
 
@@ -637,28 +667,23 @@ Ext.define('CustomApp', {
         this.down('#summaryBox').tpl = Ext.create('SummaryTemplate');
         this._updateSummaryContainer();
     },
-    _updateSummaryContainer: function(validationMessage){
+    _updateSummaryContainer: function(){
 
         var summary = this.down('#summaryBox'),
             projectID = this.getContext().getProject().ObjectID,
-            quarters = this._getQuarters(),
-            pin = this._getPlatformPin(),
-            records = this.down('#dataGrid') && this.down('#dataGrid').getStore().getRange() || [];
+            quarters = this._getQuarters();
 
         var summaryInfo = [];
         Ext.Array.each(quarters, function(q){
-            var homeDemand = this._getDemand(records, q, pin.get("ObjectID")),
-                totalDemand = this._getDemand(records, q);
 
             summaryInfo.push({
                 Pin: this._getPlatformPinName(),
                 Quarter: q,
                 TeamSprintCapacity: this.projectInfoStore.getTeamSprintCapacity(projectID),
-                homeDemand: homeDemand,
-                totalDemand: totalDemand
+                homeDemand: this.demandCalculator && this.demandCalculator.getHomeDemand(q) || 0,
+                totalDemand: this.demandCalculator && this.demandCalculator.getTotalDemand(q) || 0
             });
         }, this);
-
 
         if (quarters.length === 0){
             summaryInfo.push({
@@ -672,13 +697,7 @@ Ext.define('CustomApp', {
 
         summary.update(summaryInfo);
     },
-    _getDemand: function(records, quarter, homePin){
-        var demand = 0;
-        Ext.Array.each(records, function(r){
-           demand += r.getDemand(quarter,homePin); //If homepin is empty, then it will calculate the total demand
-        });
-        return demand;
-    },
+
     _getPlatformPin: function(){
         return this.projectInfoStore.getPinRecordForProject(this.getContext().getProject().ObjectID);
     },
@@ -704,73 +723,57 @@ Ext.define('CustomApp', {
                 allowBlank: false
         });
 
-        //this.down('#filterBox').add({
-        //        xtype: 'rallyfieldvaluecombobox',
-        //        itemId: 'stateComboBox',
-        //        fieldLabel: 'State:',
-        //        labelAlign: 'right',
-        //        multiSelect: true,
-        //        model: this.parentTypePath,
-        //        field: 'State',
-        //        allowNoEntry: false
-        //});
-
         this.down('#filterBox').add({
             xtype: 'rallycheckboxfield',
             fieldLabel: 'View Visitor Requests',
             value: false,
             itemId: 'showVisitingRequests',
             labelAlign: 'right',
-            labelWidth: 150,
-            listeners: {
-                change: this._displayGrid,
-                scope: this
-            }
+            labelWidth: 150
         });
 
-       // this.down('#stateComboBox').on('select', this._onSelect, this);
-        this.down('#quarterComboBox').on('select', this._displayGrid, this);
+        this.down('#showVisitingRequests').on('change', this._updateDisplay, this);
+        this.down('#quarterComboBox').on('select', this._updateDisplay, this);
 
-        this._displayGrid();
+        this._updateDisplay();
     },
+    /**
+     * _getFilters - filters the data (on the server) before it is returned.
+     * We are using Context: Project = null becuase we always need to return all demand for the current pin,
+     * even if it is not in scope.
+     *
+     * This function will return ALL the data we need for the filtering and calculations on this page, so we are only loading it
+     * when the project changes.
+     *
+     * @returns {*}
+     * @private
+     */
     _getFilters: function(){
-        //var state = this.down('#stateComboBox').getValue(),
         var quarters = this._getQuarters(),
-            filters = null,
-            quarterFilters = null,
-            showVisitorRequests = this.down('#showVisitingRequests').getValue();
+            filters = [];
 
-        if (quarters && quarters.length > 0){
-            quarterFilters = [];
-            Ext.Array.each(quarters, function(q){
-                if (q && q.length > 0){
-                    quarterFilters.push(Ext.create('Rally.data.wsapi.Filter', {
-                        property: this.planningQuarterField,
-                        value: q || ""
-                    }));
-                }
+        //if (quarters && quarters.length > 0){ //We have validated that quarters are selected, so we should always have quarters
+        //
+        //    //TODO: change this depending on how we want to filter quarters (by PlannedStart or PlannedEndDates or by planning field)
+        //    Ext.Array.each(quarters, function(q){
+        //        if (q && q.length > 0){
+        //            filters.push(Ext.create('Rally.data.wsapi.Filter', {
+        //                property: this.planningQuarterField,
+        //                value: q || ""
+        //            }));
+        //        }
+        //    }, this);
+        //}
 
-            }, this);
-            quarterFilters = Rally.data.wsapi.Filter.or(quarterFilters);
-        }
+        var pin = this._getPlatformPinObjectID();
 
-        //now get the pin filters
-        if (showVisitorRequests){
-            var pin = this._getPlatformPinObjectID();
+        filters.push ({
+            property: 'c_RequestedPins',
+            operator: 'contains',
+            value: '"' + pin + '"'
+        });
 
-            filters = Ext.create('Rally.data.wsapi.Filter',{
-                property: 'c_RequestedPins',
-                operator: 'contains',
-                value: '"' + pin + '"'
-            });
-        }
-
-         if (filters && quarterFilters){
-            filters =  quarterFilters.and(filters);
-            console.log('_getFilters', filters.toString());
-            return filters;
-        }
-        return filters || quarterFilters || [];
+        return Rally.data.wsapi.Filter.or(filters);
     },
     _getQuarters: function(){
         return Ext.Array.filter(this.down('#quarterComboBox').getValue() || [], function(q){
@@ -786,7 +789,7 @@ Ext.define('CustomApp', {
         return false;
     },
 
-    _displayGrid: function(){
+    _updateDisplay: function(){
 
         this.down('#gridBox').removeAll();
 
@@ -794,59 +797,58 @@ Ext.define('CustomApp', {
             return;
         }
 
+        //Now build the model and start loading data
         ExtendedModelBuilder.build(this.parentTypePath, 'PortfolioItemWithBuildingBlocks').then({
             success: this._buildGrid,
             failure: this._showError,
             scope: this
         });
     },
+    _getShowVisitingDemand: function(){
+        return this.down('#showVisitingRequests') && this.down('#showVisitingRequests').getValue() || false;
+    },
     _showError: function(message){
         Rally.ui.notify.Notifier.showError({message: message});
     },
-    _loadExternalData: function(store, records){
-
-        var objectIDs = _.map(records, function(r){
-            return r.get('ObjectID');
-        }),
-            quarters = this._getQuarters();
-        console.log('_loadExternalData',records);
-
-        this._fetchExternalData(objectIDs, quarters).then({
-            success: function(data){
-                Ext.Array.each(records, function(r){
-                    ///r.updateBuildingBlocks(data);
-                });
-                this._updateSummaryContainer();
-            },
-            failure: this._showError,
-            scope: this
+    /**
+     * _postProcessData includes:
+     *     -- loading external data (if it is being stored externally)
+     *     -- filtering data locally (if scoped to show visiting pins as well
+     *    applying other local filters (note that we still need to rollup all demand for the current
+     *    pin, which is why we need to filter locally
+     * @param store
+     * @param records
+     * @private
+     */
+    _postProcessData: function(store, records, operation){
+        this.demandCalculator = Ext.create('DemandCalculator', {
+            records: records, //We want to assign this before we filter so we have access to the entire loaded data set regardless of what was filtered locally.
+            homePin: this._getPlatformPinObjectID()
         });
 
+        this.down('#dataGrid').getStore().filterBy(this._filterDisplayData, this);
     },
-    _fetchExternalData: function(objectIDs, quarters){
-        var deferred = Ext.create('Deft.Deferred');
-
-        //We get Phuocs stuff
-        deferred.resolve(data);
-
-        return deferred;
-    },
-    _getProjectContext: function(){
-        var showVisitors = this.down('#showVisitingRequests').getValue();
-        console.log('_getProjectContext');
-        if (showVisitors){
-            console.log('showVisitors = true');
-            return {
-                project: null
-            };
+    /**
+     * _filterDisplayData - if show visiting demand, filter pins for visiting teams only.
+     * otherwise, filter out all items that are not in this pin that do not use the current pin.
+     *
+     * If we add other filters (e.g. State), then those need to be filtered here becuase we still need the current demand
+     *
+     * NOTE:  This is just filtering for display, not for demand calculation, which requires all of the data that was returned.
+     * @param item
+     * @returns {boolean}
+     * @private
+     */
+    _filterDisplayData: function(item){
+        var thisProjectPin = this._getPlatformPinObjectID(),
+            pinRegExp = new RegExp('\"' + thisProjectPin + '\"');
+        if (this._getShowVisitingDemand()){
+            return item.get('Project').ObjectID !== thisProjectPin &&
+                pinRegExp.test(item.get('c_RequestedPins'));
         }
-        return {
-            project: this.getContext().getProject()._ref,
-            projectScopeDown: true
-        };
+        return this.projectInfoStore.getPinRecordForProject(item.get('Project').ObjectID).get('ObjectID') === thisProjectPin ;
     },
     _buildGrid: function(model){
-        var projectContext = this._getProjectContext();
 
         var grid = this.down('#gridBox').add({
             xtype: 'rallygrid',
@@ -855,14 +857,15 @@ Ext.define('CustomApp', {
             storeConfig: {
                 model: model,
                 fetch: this.parentFetch,
-                autoLoad: true,
                 filters: this._getFilters(),
                 listeners: {
-                    load: this._loadExternalData,
+                    load: this._postProcessData,
                     datachanged: this._updateSummaryContainer,
                     scope: this
                 },
-                context: projectContext
+                context: {
+                    project: null  // We will always need to load all data for the demand, even when we aren't viewing visitor teams so this needs to be null
+                }
             },
             margin: 25,
             columnCfgs: this._getColumnCfgs(),
@@ -872,6 +875,7 @@ Ext.define('CustomApp', {
                 rowBodyTpl: '<div id="planning-{FormattedID}"></div>'
             }]
         });
+
         grid.on('afterlayout', this._restoreRowHeight, this);
         grid.getView().on('expandbody', this._expandRowBody, this);
         grid.getView().on('collapsebody', this._collapseRowBody, this);
@@ -959,7 +963,7 @@ Ext.define('CustomApp', {
                         var home = r.getDemand(q,homePin),
                             total = r.getDemand(q);
 
-                        return Ext.String.format('{0}/{1}', home, total-home);
+                        return Ext.String.format('{0} / {1}', home, total-home);
                     }
                 });
             }
@@ -989,6 +993,7 @@ Ext.define('CustomApp', {
             listeners: {
                 scope: this,
                 itemchosen: function(dlg, selectedTeam){
+                    console.log('selectedTeam', selectedTeam);
                     var bbs = this.buildBuildingBlockData(selectedTeam);
                     record.appendBuildingBlock(bbs);
                 }
@@ -1287,7 +1292,6 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
                 }
             })) : Ext.create('Ext.selection.RowModel', selectionConfig),
             showRowActionsColumn: false,
-            //storeConfig: this._getStoreConfig(),
             store: projectDataStore,
             viewConfig: {
                 emptyText: Rally.ui.EmptyTextFactory.get('defaultText'),
@@ -1343,7 +1347,8 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
 
     _findRecordInSelectionCache: function(record){
         return _.findIndex(this.selectionCache, function(cachedRecord) {
-            return cachedRecord.get('ObjectID') === record.get('ObjectID');
+            return cachedRecord.get('pin') === record.get('pin') &&
+                cachedRecord.get('buildingBlock') === record.get('buildingBlock');
         });
     },
 
@@ -1356,7 +1361,6 @@ Ext.define('Rally.ui.dialog.CustomChooserDialog', {
             }
             this.selectionCache.push(record);
         }
-
         this._enableDoneButton();
     },
 
