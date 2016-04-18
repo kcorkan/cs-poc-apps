@@ -383,9 +383,14 @@ Ext.define('ExtendedModelBuilder',{
                     appendBuildingBlock: function(bbs){
                         var buildingBlocks = this._getBuildingBlockObjects();
 
-                        //This assumes that building blocks will be unique.  If they are not, then we need to add them
+                        //If the building block already exists, then it won't be appended.
                         Ext.Array.each(bbs, function(bb){
-                            buildingBlocks.push(bb);
+                            var existingBB = Ext.Array.filter(buildingBlocks, function(b){
+                                return b.pin === bb.pin && b.quarter === bb.quarter && b.buildingBlock === bb.buildingBlock;
+                            });
+                            if (!existingBB || existingBB.length === 0 ){
+                                buildingBlocks.push(bb);
+                            }
                         });
                         this._setBuildingBlockObjects(buildingBlocks);
                     },
@@ -409,20 +414,17 @@ Ext.define('ExtendedModelBuilder',{
                                 hash[key][bb.quarter] = bb.demand || 0;
                             }
                         });
-                        console.log('getFlattenedBuildingBlockObjects',hash, _.values(hash));
                         return _.values(hash);
                     },
                     updateDemand: function(demand, quarter, pin, buildingBlock){
                         var bbs = this._getBuildingBlockObjects(),
                             updatedBuildingBlocks = [];
-                        console.log('updateDemand', demand, quarter, pin, buildingBlock, bbs);
                         Ext.Array.each(bbs, function(b){
                             if (b.quarter === quarter && b.pin === pin && b.buildingBlock === buildingBlock){
                                 b.demand = demand;
                             }
                             updatedBuildingBlocks.push(b);
                         });
-                        console.log('updateDemand updated',updatedBuildingBlocks);
 
                         this._setBuildingBlockObjects(updatedBuildingBlocks);
                     },
@@ -456,14 +458,14 @@ Ext.define('ExtendedModelBuilder',{
                     _getBuildingBlockObjects: function(){
                         var objects =  Ext.JSON.decode(this.get(this.buildingBlockField) || "[]");
 
-                        //post-load data manipulation  here
+                        //post-load data manipulation  here, if needed.
 
                         return objects;
                     },
                     _setBuildingBlockObjects: function(buildingBlocks){
 
                         //pre-save data manipulation here - need to transform the flattened rows into
-                        //normalized object to save as JSON
+                        //normalized object to save as JSON, if needed.
 
                         this.set(this.buildingBlockField, Ext.JSON.encode(buildingBlocks || []));
                         this.save();
@@ -888,10 +890,18 @@ Ext.define('CustomApp', {
          Ext.Array.each(grid.getView().getNodes(), function(n){
              var collapsed = /x-grid-row-collapsed/.test(n.className);
              if (!collapsed){
-                 //we need to do something here to reset the rowheight
-                 console.log('node expanded');
+                 //we need to re-expand the expander so that the height gets reset.  There may be a more elegant way to do this, but it needs to be researched.
+                 var recordIndex = document.getElementById(n.id) &&
+                                    document.getElementById(n.id).dataset &&
+                                    document.getElementById(n.id).dataset.recordindex,
+
+                     record = recordIndex ? grid.getStore().getAt(recordIndex) : null;
+
+                 if (record){
+                     this._expandRowBody(n,record, n);
+                 }
              }
-        });
+        }, this);
     },
     _collapseRowBody: function(rowNode, record, expandRow, options){
         var ctCmp = Ext.getCmp(this._getBuildingBlockCmpId(record));
@@ -993,34 +1003,31 @@ Ext.define('CustomApp', {
             listeners: {
                 scope: this,
                 itemchosen: function(dlg, selectedTeam){
-                    console.log('selectedTeam', selectedTeam);
-                    var bbs = this.buildBuildingBlockData(selectedTeam);
-                    record.appendBuildingBlock(bbs);
+
+                    if (!Ext.isArray(selectedTeam)){
+                        selectedTeam = [selectedTeam];
+                    }
+
+                    var data = [],
+                        quarters = this._getQuarters();
+
+                    Ext.Array.each(quarters, function(q){
+                        Ext.Array.each(selectedTeam, function(t){
+                            var tData = t.getData();
+                            data.push({
+                                pin: tData.pin,
+                                pinName: tData.pinName,
+                                buildingBlock: tData.buildingBlock,
+                                quarter: q,
+                                demand: 0
+                            });
+                        });
+                    });
+                    record.appendBuildingBlock(data);
                 }
             }
         });
         dlg.show();
-    },
-    buildBuildingBlockData: function(teams){
-        if (!Ext.isArray(teams)){
-            teams = [teams];
-        }
-        var data = [],
-            quarters = this._getQuarters();
-
-        Ext.Array.each(quarters, function(q){
-            Ext.Array.each(teams, function(t){
-                var tData = t.getData();
-                data.push({
-                    pin: tData.pin,
-                    pinName: tData.pinName,
-                    buildingBlock: tData.buildingBlock,
-                    quarter: q,
-                    demand: 0
-                });
-            });
-        });
-        return data;
     }
 });
 

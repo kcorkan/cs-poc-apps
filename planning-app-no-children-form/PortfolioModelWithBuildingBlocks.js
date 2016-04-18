@@ -39,9 +39,14 @@ Ext.define('ExtendedModelBuilder',{
                     appendBuildingBlock: function(bbs){
                         var buildingBlocks = this._getBuildingBlockObjects();
 
-                        //This assumes that building blocks will be unique.  If they are not, then we need to add them
+                        //If the building block already exists, then it won't be appended.
                         Ext.Array.each(bbs, function(bb){
-                            buildingBlocks.push(bb);
+                            var existingBB = Ext.Array.filter(buildingBlocks, function(b){
+                                return b.pin === bb.pin && b.quarter === bb.quarter && b.buildingBlock === bb.buildingBlock;
+                            });
+                            if (!existingBB || existingBB.length === 0 ){
+                                buildingBlocks.push(bb);
+                            }
                         });
                         this._setBuildingBlockObjects(buildingBlocks);
                     },
@@ -65,20 +70,17 @@ Ext.define('ExtendedModelBuilder',{
                                 hash[key][bb.quarter] = bb.demand || 0;
                             }
                         });
-                        console.log('getFlattenedBuildingBlockObjects',hash, _.values(hash));
                         return _.values(hash);
                     },
                     updateDemand: function(demand, quarter, pin, buildingBlock){
                         var bbs = this._getBuildingBlockObjects(),
                             updatedBuildingBlocks = [];
-                        console.log('updateDemand', demand, quarter, pin, buildingBlock, bbs);
                         Ext.Array.each(bbs, function(b){
                             if (b.quarter === quarter && b.pin === pin && b.buildingBlock === buildingBlock){
                                 b.demand = demand;
                             }
                             updatedBuildingBlocks.push(b);
                         });
-                        console.log('updateDemand updated',updatedBuildingBlocks);
 
                         this._setBuildingBlockObjects(updatedBuildingBlocks);
                     },
@@ -112,14 +114,14 @@ Ext.define('ExtendedModelBuilder',{
                     _getBuildingBlockObjects: function(){
                         var objects =  Ext.JSON.decode(this.get(this.buildingBlockField) || "[]");
 
-                        //post-load data manipulation  here
+                        //post-load data manipulation  here, if needed.
 
                         return objects;
                     },
                     _setBuildingBlockObjects: function(buildingBlocks){
 
                         //pre-save data manipulation here - need to transform the flattened rows into
-                        //normalized object to save as JSON
+                        //normalized object to save as JSON, if needed.
 
                         this.set(this.buildingBlockField, Ext.JSON.encode(buildingBlocks || []));
                         this.save();

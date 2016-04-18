@@ -287,10 +287,18 @@ Ext.define('CustomApp', {
          Ext.Array.each(grid.getView().getNodes(), function(n){
              var collapsed = /x-grid-row-collapsed/.test(n.className);
              if (!collapsed){
-                 //we need to do something here to reset the rowheight
-                 console.log('node expanded');
+                 //we need to re-expand the expander so that the height gets reset.  There may be a more elegant way to do this, but it needs to be researched.
+                 var recordIndex = document.getElementById(n.id) &&
+                                    document.getElementById(n.id).dataset &&
+                                    document.getElementById(n.id).dataset.recordindex,
+
+                     record = recordIndex ? grid.getStore().getAt(recordIndex) : null;
+
+                 if (record){
+                     this._expandRowBody(n,record, n);
+                 }
              }
-        });
+        }, this);
     },
     _collapseRowBody: function(rowNode, record, expandRow, options){
         var ctCmp = Ext.getCmp(this._getBuildingBlockCmpId(record));
@@ -392,33 +400,30 @@ Ext.define('CustomApp', {
             listeners: {
                 scope: this,
                 itemchosen: function(dlg, selectedTeam){
-                    console.log('selectedTeam', selectedTeam);
-                    var bbs = this.buildBuildingBlockData(selectedTeam);
-                    record.appendBuildingBlock(bbs);
+
+                    if (!Ext.isArray(selectedTeam)){
+                        selectedTeam = [selectedTeam];
+                    }
+
+                    var data = [],
+                        quarters = this._getQuarters();
+
+                    Ext.Array.each(quarters, function(q){
+                        Ext.Array.each(selectedTeam, function(t){
+                            var tData = t.getData();
+                            data.push({
+                                pin: tData.pin,
+                                pinName: tData.pinName,
+                                buildingBlock: tData.buildingBlock,
+                                quarter: q,
+                                demand: 0
+                            });
+                        });
+                    });
+                    record.appendBuildingBlock(data);
                 }
             }
         });
         dlg.show();
-    },
-    buildBuildingBlockData: function(teams){
-        if (!Ext.isArray(teams)){
-            teams = [teams];
-        }
-        var data = [],
-            quarters = this._getQuarters();
-
-        Ext.Array.each(quarters, function(q){
-            Ext.Array.each(teams, function(t){
-                var tData = t.getData();
-                data.push({
-                    pin: tData.pin,
-                    pinName: tData.pinName,
-                    buildingBlock: tData.buildingBlock,
-                    quarter: q,
-                    demand: 0
-                });
-            });
-        });
-        return data;
     }
 });
