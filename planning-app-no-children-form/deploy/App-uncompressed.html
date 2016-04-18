@@ -898,6 +898,7 @@ Ext.define('CustomApp', {
                      record = recordIndex ? grid.getStore().getAt(recordIndex) : null;
 
                  if (record){
+                     this._collapseRowBody(n, record);
                      this._expandRowBody(n,record, n);
                  }
              }
